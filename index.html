@@ -33,7 +33,15 @@ const W = canvas.width, H = canvas.height;
 let state;          // "playing" or "gameover"
 let score, lives, wave;
 let ship, bullets, alienBullets, aliens;
-let alienDir, lastShot, invulnUntil;
+let alienDir, lastShot, invulnUntil, lastHitAt;
+
+// Power-up: shooting 5 seconds without getting hit grants rapid fire.
+// Getting hit resets the streak and the boost until it's earned again.
+const RAPID_FIRE_AFTER = 5000;
+const RAPID_FIRE_COOLDOWN = 150;
+const NORMAL_FIRE_COOLDOWN = 300;
+
+function rapidFire(now) { return now - lastHitAt >= RAPID_FIRE_AFTER; }
 
 // Decorative static starfield (generated once).
 const stars = Array.from({ length: 90 }, () => ({
@@ -62,6 +70,7 @@ function resetGame() {
   alienBullets = [];
   lastShot = 0;
   invulnUntil = 0;
+  lastHitAt = performance.now();
   makeAliens();
   state = "playing";
 }
@@ -84,6 +93,7 @@ function rectsOverlap(a, b) {
 
 function loseLife() {
   lives--;
+  lastHitAt = performance.now(); // losing the no-hit streak costs the rapid fire boost
   invulnUntil = performance.now() + 1500; // brief grace period, ship blinks
   if (lives <= 0) state = "gameover";
 }
@@ -100,8 +110,9 @@ function update(dt, now) {
   if (keys["ArrowRight"]) ship.x += ship.speed * dt;
   ship.x = Math.max(ship.w / 2, Math.min(W - ship.w / 2, ship.x));
 
-  // Firing (one bullet every 300 ms while Space is held)
-  if (keys[" "] && now - lastShot > 300) {
+  // Firing (one bullet per cooldown while Space is held; rapid fire halves it)
+  const cooldown = rapidFire(now) ? RAPID_FIRE_COOLDOWN : NORMAL_FIRE_COOLDOWN;
+  if (keys[" "] && now - lastShot > cooldown) {
     bullets.push({ x: ship.x - 2, y: ship.y - 10, w: 4, h: 12 });
     lastShot = now;
   }
@@ -192,7 +203,7 @@ function drawShip() {
   // Blink while invulnerable after being hit
   if (performance.now() < invulnUntil && Math.floor(performance.now() / 120) % 2 === 0) return;
   const { x, y, w, h } = ship;
-  ctx.fillStyle = "#59c1ff";
+  ctx.fillStyle = rapidFire(performance.now()) ? "#ffdd57" : "#59c1ff"; // gold hull = rapid fire active
   ctx.beginPath(); // hull
   ctx.moveTo(x, y);
   ctx.lineTo(x - w / 2, y + h);
@@ -224,6 +235,11 @@ function draw() {
   ctx.fillText("SCORE " + score, 16, 28);
   ctx.textAlign = "center";
   ctx.fillText("WAVE " + wave, W / 2, 28);
+  if (state === "playing" && rapidFire(performance.now())) {
+    ctx.fillStyle = "#ffdd57";
+    ctx.fillText("RAPID FIRE", W / 2, 52);
+    ctx.fillStyle = "#cfe8ff";
+  }
   ctx.textAlign = "right";
   ctx.fillText("LIVES " + "\u2665".repeat(Math.max(0, lives)), W - 16, 28);
 
